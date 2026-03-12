@@ -172,7 +172,7 @@ td { padding: 0.5rem; border-bottom: 1px solid #1e293b; }
       <div class="card">
         <h3>SS节点列表</h3>
         <table>
-          <thead><tr><th>落地机</th><th>端口</th><th>加密</th><th>状态</th><th>操作</th></tr></thead>
+          <thead><tr><th>落地机</th><th>端口</th><th>加密</th><th>状态</th></tr></thead>
           <tbody id="ssList"></tbody>
         </table>
       </div>
@@ -252,7 +252,7 @@ async function loadServers() {
       <td>${esc(s.name)}</td><td>${esc(s.host)}:${s.port}</td>
       <td>${s.role}</td>
       <td><span class="badge ${s.status==='online'?'badge-green':'badge-gray'}">${s.status}</span></td>
-      <td><button class="btn btn-blue btn-sm" onclick="testServer(${s.id})">测试</button> <button class="btn btn-red btn-sm" onclick="delServer(${s.id})">删除</button></td>
+      <td><button class="btn btn-red btn-sm" onclick="delServer(${s.id})">删除</button></td>
     </tr>`).join('');
     // Update SS server selector
     const sel = document.getElementById('ssServer');
@@ -280,15 +280,7 @@ async function addServer() {
 
 async function delServer(id) {
   if (!confirm('确认删除?')) return;
-  try { await api('DELETE', '/servers/' + id); await loadServers(); await loadDashboard(); } catch (e) { alert(e.message); }
-}
-
-async function testServer(id) {
-  try {
-    const data = await api('POST', '/servers/' + id + '/test');
-    showMsg('srvMsg', data.status + ': ' + (data.message || data.error));
-    await loadServers();
-  } catch (e) { showMsg('srvMsg', e.message, true); }
+  try { await api('DELETE', '/servers/' + id); await loadServers(); await loadDashboard(); } catch (e) {}
 }
 
 // Forwards
@@ -300,7 +292,7 @@ async function loadForwards() {
       <td>${esc(f.name)}</td><td>${f.listen_port}</td>
       <td>${esc(f.target_host)}:${f.target_port}</td>
       <td><span class="badge ${f.status==='active'?'badge-green':'badge-gray'}">${f.status}</span></td>
-      <td><button class="btn ${f.status==='active'?'btn-red':'btn-green'} btn-sm" onclick="toggleForward(${f.id})">${f.status==='active'?'停用':'激活'}</button> <button class="btn btn-red btn-sm" onclick="delForward(${f.id})">删除</button></td>
+      <td><button class="btn btn-red btn-sm" onclick="delForward(${f.id})">删除</button></td>
     </tr>`).join('');
   } catch (e) {}
 }
@@ -322,16 +314,7 @@ async function addForward() {
 
 async function delForward(id) {
   if (!confirm('确认删除?')) return;
-  try { await api('DELETE', '/forwards/' + id); await loadForwards(); await loadDashboard(); } catch (e) { alert(e.message); }
-}
-
-async function toggleForward(id) {
-  try {
-    const data = await api('POST', '/forwards/' + id + '/toggle');
-    showMsg('fwdMsg', data.message);
-    await loadForwards();
-    await loadDashboard();
-  } catch (e) { showMsg('fwdMsg', e.message, true); }
+  try { await api('DELETE', '/forwards/' + id); await loadForwards(); await loadDashboard(); } catch (e) {}
 }
 
 // SS
@@ -342,7 +325,6 @@ async function loadSSNodes() {
     tbody.innerHTML = data.map(n => `<tr>
       <td>${esc(n.server_name)}</td><td>${n.port}</td><td>${n.method}</td>
       <td><span class="badge ${n.status==='active'?'badge-green':'badge-gray'}">${n.status}</span></td>
-      <td><button class="btn btn-red btn-sm" onclick="delSSNode(${n.id})">删除</button></td>
     </tr>`).join('');
   } catch (e) {}
 }
@@ -359,11 +341,6 @@ async function deploySSNode() {
     showMsg('ssMsg', '部署中...');
     await loadSSNodes();
   } catch (e) { showMsg('ssMsg', e.message, true); }
-}
-
-async function delSSNode(id) {
-  if (!confirm('确认删除SS节点?')) return;
-  try { await api('DELETE', '/ss/' + id); await loadSSNodes(); await loadDashboard(); } catch (e) { alert(e.message); }
 }
 
 // Helpers

@@ -1,6 +1,6 @@
 # Highway7
 
-IPLC landing IP management panel for AI infrastructure.
+AI时代的高速公路
 
 ## What it does
 
