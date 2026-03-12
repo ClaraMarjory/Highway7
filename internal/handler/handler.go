@@ -3,11 +3,16 @@ package handler
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/ClaraMarjory/Highway7/internal/db"
+	"github.com/ClaraMarjory/Highway7/internal/iptables"
+	"github.com/ClaraMarjory/Highway7/internal/ss"
+	remotessh "github.com/ClaraMarjory/Highway7/internal/ssh"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,41 +23,35 @@ var (
 )
 
 func RegisterRoutes(r *gin.Engine) {
-	// Login
 	r.POST("/api/login", handleLogin)
 
-	// Protected API
 	api := r.Group("/api", authMiddleware())
 	{
-		// Servers (landing machines)
 		api.GET("/servers", listServers)
 		api.POST("/servers", addServer)
 		api.DELETE("/servers/:id", deleteServer)
 		api.POST("/servers/:id/test", testServer)
 
-		// Forwards (iptables DNAT rules)
 		api.GET("/forwards", listForwards)
 		api.POST("/forwards", addForward)
 		api.DELETE("/forwards/:id", deleteForward)
 		api.POST("/forwards/:id/toggle", toggleForward)
 
-		// SS nodes
 		api.GET("/ss", listSSNodes)
 		api.POST("/ss/deploy", deploySSNode)
+		api.DELETE("/ss/:id", deleteSSNode)
 
-		// System
 		api.GET("/status", systemStatus)
 		api.GET("/iptables", showIPTables)
 	}
 
-	// Static files & SPA
 	r.Static("/static", "./web/static")
 	r.NoRoute(func(c *gin.Context) {
 		c.File("./web/static/index.html")
 	})
 }
 
-// Auth
+// ==================== Auth ====================
 
 func handleLogin(c *gin.Context) {
 	var req struct {
@@ -105,7 +104,15 @@ func generateToken() string {
 	return hex.EncodeToString(b)
 }
 
-// Server handlers
+// ==================== Helper ====================
+
+func getServerCreds(id string) (host, user, authType, authValue string, port int, err error) {
+	err = db.DB.QueryRow(`SELECT host, port, user, auth_type, auth_value FROM servers WHERE id = ?`, id).
+		Scan(&host, &port, &user, &authType, &authValue)
+	return
+}
+
+// ==================== Servers ====================
 
 func listServers(c *gin.Context) {
 	rows, err := db.DB.Query(`SELECT id, name, host, port, user, auth_type, role, status, created_at FROM servers ORDER BY id`)
@@ -168,6 +175,21 @@ func addServer(c *gin.Context) {
 
 func deleteServer(c *gin.Context) {
 	id := c.Param("id")
+
+	var fwdCount int
+	db.DB.QueryRow(`SELECT COUNT(*) FROM forwards WHERE server_id = ?`, id).Scan(&fwdCount)
+	if fwdCount > 0 {
+		c.JSON(400, gin.H{"error": fmt.Sprintf("server has %d forward(s), delete them first", fwdCount)})
+		return
+	}
+
+	var ssCount int
+	db.DB.QueryRow(`SELECT COUNT(*) FROM ss_nodes WHERE server_id = ?`, id).Scan(&ssCount)
+	if ssCount > 0 {
+		c.JSON(400, gin.H{"error": fmt.Sprintf("server has %d SS node(s), delete them first", ssCount)})
+		return
+	}
+
 	_, err := db.DB.Exec(`DELETE FROM servers WHERE id = ?`, id)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -178,24 +200,27 @@ func deleteServer(c *gin.Context) {
 
 func testServer(c *gin.Context) {
 	id := c.Param("id")
-	var host, user, authType, authValue string
-	var port int
-	err := db.DB.QueryRow(`SELECT host, port, user, auth_type, auth_value FROM servers WHERE id = ?`, id).
-		Scan(&host, &port, &user, &authType, &authValue)
+	host, user, authType, authValue, port, err := getServerCreds(id)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "server not found"})
 		return
 	}
 
-	// Use SSH module to test
-	err = nil // placeholder - will use ssh.TestConnection in real deployment
-	c.JSON(200, gin.H{"status": "ok", "message": "connection test passed"})
+	err = remotessh.TestConnection(host, port, user, authType, authValue)
+	if err != nil {
+		db.DB.Exec(`UPDATE servers SET status = 'offline', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+		c.JSON(200, gin.H{"status": "offline", "error": err.Error()})
+		return
+	}
+
+	db.DB.Exec(`UPDATE servers SET status = 'online', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+	c.JSON(200, gin.H{"status": "online", "message": "SSH connection OK"})
 }
 
-// Forward handlers
+// ==================== Forwards ====================
 
 func listForwards(c *gin.Context) {
-	rows, err := db.DB.Query(`SELECT f.id, f.name, f.server_id, s.name, f.listen_port, f.target_host, f.target_port, f.protocol, f.status
+	rows, err := db.DB.Query(`SELECT f.id, f.name, f.server_id, COALESCE(s.name,''), f.listen_port, f.target_host, f.target_port, f.protocol, f.status
 		FROM forwards f LEFT JOIN servers s ON f.server_id = s.id ORDER BY f.id`)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -247,13 +272,30 @@ func addForward(c *gin.Context) {
 		return
 	}
 	id, _ := result.LastInsertId()
-	c.JSON(200, gin.H{"id": id, "message": "forward added"})
+	c.JSON(200, gin.H{"id": id, "message": "forward added, use toggle to activate"})
 }
 
 func deleteForward(c *gin.Context) {
 	id := c.Param("id")
-	// TODO: also remove iptables rule
-	_, err := db.DB.Exec(`DELETE FROM forwards WHERE id = ?`, id)
+
+	var listenPort, targetPort int
+	var targetHost, proto, status string
+	err := db.DB.QueryRow(`SELECT listen_port, target_host, target_port, protocol, status FROM forwards WHERE id = ?`, id).
+		Scan(&listenPort, &targetHost, &targetPort, &proto, &status)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "forward not found"})
+		return
+	}
+
+	if status == "active" {
+		if err := iptables.RemoveDNAT(listenPort, targetHost, targetPort, proto); err != nil {
+			c.JSON(500, gin.H{"error": fmt.Sprintf("remove iptables rule failed: %v", err)})
+			return
+		}
+		iptables.SaveRules()
+	}
+
+	_, err = db.DB.Exec(`DELETE FROM forwards WHERE id = ?`, id)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -262,14 +304,43 @@ func deleteForward(c *gin.Context) {
 }
 
 func toggleForward(c *gin.Context) {
-	// TODO: activate/deactivate iptables rule
-	c.JSON(200, gin.H{"message": "toggled"})
+	id := c.Param("id")
+
+	var listenPort, targetPort int
+	var targetHost, proto, status string
+	err := db.DB.QueryRow(`SELECT listen_port, target_host, target_port, protocol, status FROM forwards WHERE id = ?`, id).
+		Scan(&listenPort, &targetHost, &targetPort, &proto, &status)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "forward not found"})
+		return
+	}
+
+	if status == "active" {
+		if err := iptables.RemoveDNAT(listenPort, targetHost, targetPort, proto); err != nil {
+			c.JSON(500, gin.H{"error": fmt.Sprintf("remove rule failed: %v", err)})
+			return
+		}
+		db.DB.Exec(`UPDATE forwards SET status = 'inactive' WHERE id = ?`, id)
+		iptables.SaveRules()
+		c.JSON(200, gin.H{"status": "inactive", "message": "forward deactivated"})
+	} else {
+		iptables.EnsureForwarding()
+		iptables.EnsureMasquerade()
+
+		if err := iptables.AddDNAT(listenPort, targetHost, targetPort, proto); err != nil {
+			c.JSON(500, gin.H{"error": fmt.Sprintf("add rule failed: %v", err)})
+			return
+		}
+		db.DB.Exec(`UPDATE forwards SET status = 'active' WHERE id = ?`, id)
+		iptables.SaveRules()
+		c.JSON(200, gin.H{"status": "active", "message": "forward activated"})
+	}
 }
 
-// SS handlers
+// ==================== SS Nodes ====================
 
 func listSSNodes(c *gin.Context) {
-	rows, err := db.DB.Query(`SELECT n.id, n.server_id, s.name, n.port, n.method, n.status
+	rows, err := db.DB.Query(`SELECT n.id, n.server_id, COALESCE(s.name,''), n.port, n.method, n.status
 		FROM ss_nodes n LEFT JOIN servers s ON n.server_id = s.id ORDER BY n.id`)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -305,7 +376,13 @@ func deploySSNode(c *gin.Context) {
 		return
 	}
 
-	// TODO: call ss.Deploy via SSH
+	sid := strconv.FormatInt(req.ServerID, 10)
+	host, user, authType, authValue, sshPort, err := getServerCreds(sid)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "server not found"})
+		return
+	}
+
 	result, err := db.DB.Exec(
 		`INSERT INTO ss_nodes (server_id, port, password, method, status) VALUES (?,?,?,'none','deploying')`,
 		req.ServerID, req.Port, req.Password,
@@ -314,27 +391,70 @@ func deploySSNode(c *gin.Context) {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	id, _ := result.LastInsertId()
-	c.JSON(200, gin.H{"id": id, "message": "deploying SS node"})
+	nodeID, _ := result.LastInsertId()
+
+	go func() {
+		err := ss.Deploy(host, sshPort, user, authType, authValue, req.Port, req.Password, "none")
+		if err != nil {
+			db.DB.Exec(`UPDATE ss_nodes SET status = 'failed' WHERE id = ?`, nodeID)
+			return
+		}
+		db.DB.Exec(`UPDATE ss_nodes SET status = 'active' WHERE id = ?`, nodeID)
+	}()
+
+	c.JSON(200, gin.H{"id": nodeID, "message": "deploying SS node (method=none)"})
 }
 
-// System handlers
+func deleteSSNode(c *gin.Context) {
+	id := c.Param("id")
+
+	var serverID int64
+	var status string
+	err := db.DB.QueryRow(`SELECT server_id, status FROM ss_nodes WHERE id = ?`, id).Scan(&serverID, &status)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "SS node not found"})
+		return
+	}
+
+	if status == "active" {
+		sid := strconv.FormatInt(serverID, 10)
+		host, user, authType, authValue, sshPort, err := getServerCreds(sid)
+		if err == nil {
+			ss.Stop(host, sshPort, user, authType, authValue)
+		}
+	}
+
+	_, err = db.DB.Exec(`DELETE FROM ss_nodes WHERE id = ?`, id)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"message": "deleted"})
+}
+
+// ==================== System ====================
 
 func systemStatus(c *gin.Context) {
-	var serverCount, forwardCount, ssCount int
+	var serverCount, forwardCount, ssCount, activeForwards int
 	db.DB.QueryRow(`SELECT COUNT(*) FROM servers`).Scan(&serverCount)
 	db.DB.QueryRow(`SELECT COUNT(*) FROM forwards`).Scan(&forwardCount)
+	db.DB.QueryRow(`SELECT COUNT(*) FROM forwards WHERE status = 'active'`).Scan(&activeForwards)
 	db.DB.QueryRow(`SELECT COUNT(*) FROM ss_nodes`).Scan(&ssCount)
 
 	c.JSON(200, gin.H{
-		"version":  "0.1.0",
-		"servers":  serverCount,
-		"forwards": forwardCount,
-		"ss_nodes": ssCount,
+		"version":         "0.1.0",
+		"servers":         serverCount,
+		"forwards":        forwardCount,
+		"active_forwards": activeForwards,
+		"ss_nodes":        ssCount,
 	})
 }
 
 func showIPTables(c *gin.Context) {
-	// Local iptables status
-	c.JSON(200, gin.H{"message": "iptables listing - TODO"})
+	rules, err := iptables.ListNATRules()
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"rules": rules})
 }
