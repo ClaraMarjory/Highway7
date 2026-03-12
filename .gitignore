@@ -1,0 +1,7 @@
+highway
+highway-linux-amd64
+data/
+*.db
+*.db-wal
+*.db-shm
+.env

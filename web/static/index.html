@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Highway7</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Noto Sans SC', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      }
+    }
+  }
+}
+</script>
+<style>
+body { font-family: 'Noto Sans SC', system-ui, sans-serif; background: #0c0f1a; color: #cbd5e1; }
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+
+/* Animations */
+.fade-in { animation: fadeIn 0.25s ease-out; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+
+/* Sidebar */
+.nav-item { transition: all 0.12s ease; border-left: 3px solid transparent; }
+.nav-item:hover { background: rgba(59,130,246,0.06); }
+.nav-item.active { background: rgba(59,130,246,0.1); border-left-color: #3b82f6; color: #e2e8f0; }
+
+/* Cards */
+.card { background: #111827; border: 1px solid rgba(30,41,59,0.6); border-radius: 12px; }
+
+/* Inputs */
+.ipt { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 8px 12px; color: #e2e8f0; font-size: 13px; transition: border-color 0.15s; }
+.ipt:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+select.ipt { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+
+/* Buttons */
+.btn { padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.12s; }
+.btn-primary { background: #3b82f6; color: #fff; }
+.btn-primary:hover { background: #2563eb; }
+.btn-success { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
+.btn-success:hover { background: rgba(16,185,129,0.25); }
+.btn-danger { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+.btn-danger:hover { background: rgba(239,68,68,0.22); }
+.btn-warn { background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+.btn-warn:hover { background: rgba(251,191,36,0.22); }
+.btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+.btn-ghost { background: rgba(148,163,184,0.08); color: #94a3b8; border: 1px solid rgba(148,163,184,0.15); }
+.btn-ghost:hover { background: rgba(148,163,184,0.15); }
+
+/* Status badges */
+.badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; letter-spacing: 0.3px; }
+.badge-online, .badge-active { background: rgba(16,185,129,0.1); color: #34d399; border: 1px solid rgba(16,185,129,0.2); }
+.badge-offline, .badge-failed { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+.badge-inactive, .badge-unknown { background: rgba(100,116,139,0.1); color: #64748b; border: 1px solid rgba(100,116,139,0.15); }
+.badge-deploying { background: rgba(251,191,36,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+
+/* Table */
+.tbl { width: 100%; font-size: 13px; border-collapse: collapse; }
+.tbl th { text-align: left; padding: 10px 14px; color: #64748b; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #1e293b; }
+.tbl td { padding: 12px 14px; border-bottom: 1px solid rgba(30,41,59,0.4); }
+.tbl tr:hover td { background: rgba(59,130,246,0.03); }
+.tbl tr:last-child td { border-bottom: none; }
+
+/* Toast */
+.toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 10px; font-size: 13px; z-index: 999; animation: toastIn 0.2s ease; }
+.toast-ok { background: #065f46; color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+.toast-err { background: #7f1d1d; color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+@keyframes toastIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+</style>
+</head>
+<body>
+
+<!-- ========== LOGIN ========== -->
+<div id="loginWrap" class="min-h-screen flex items-center justify-center">
+  <div class="fade-in w-[360px]">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center gap-2 mb-2">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <span class="text-xl font-bold text-white tracking-tight">Highway7</span>
+      </div>
+      <p class="text-xs text-slate-500">AI出海基础设施</p>
+    </div>
+    <div class="card p-6">
+      <label class="block text-xs text-slate-500 mb-1.5">管理密码</label>
+      <input type="password" id="passInput" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" class="ipt w-full mb-4 font-mono">
+      <button onclick="doLogin()" class="btn btn-primary w-full py-2.5">登录</button>
+      <div id="loginMsg" class="mt-3 text-xs text-center"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== APP ========== -->
+<div id="app" class="hidden flex min-h-screen">
+
+  <!-- Sidebar -->
+  <aside class="w-[200px] fixed h-full flex flex-col" style="background:#0f1320; border-right:1px solid rgba(30,41,59,0.5)">
+    <div class="px-4 py-5 border-b border-slate-800/30">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">
+          <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div>
+          <div class="text-sm font-semibold text-white">Highway7</div>
+          <div class="text-[10px] text-slate-600 font-mono" id="verInfo">v0.1.1</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="flex-1 py-3 px-2 space-y-0.5">
+      <a onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-item active flex items-center gap-2.5 px-3 py-2 rounded-r-lg cursor-pointer text-sm text-slate-400">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+        概览
+      </a>
+      <a onclick="switchTab('lines')" data-tab="lines" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg cursor-pointer text-sm text-slate-400">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.858 15.355-5.858 21.213 0"/></svg>
+        专线线路
+      </a>
+      <a onclick="switchTab('forwards')" data-tab="forwards" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg cursor-pointer text-sm text-slate-400">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+        转发规则
+      </a>
+      <a onclick="switchTab('remote')" data-tab="remote" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg cursor-pointer text-sm text-slate-400">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>
+        远端IP
+      </a>
+    </nav>
+
+    <div class="px-3 py-3 border-t border-slate-800/30">
+      <button onclick="doLogout()" class="btn btn-ghost w-full text-xs py-2">退出登录</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 ml-[200px]">
+    <header class="sticky top-0 z-10 px-6 py-3.5 flex items-center justify-between" style="background:rgba(12,15,26,0.85); backdrop-filter:blur(12px); border-bottom:1px solid rgba(30,41,59,0.4)">
+      <h2 class="text-sm font-semibold text-slate-200" id="pageTitle">概览</h2>
+      <div class="flex items-center gap-3">
+        <button onclick="refreshAll()" class="btn btn-ghost btn-sm">刷新</button>
+      </div>
+    </header>
+
+    <div class="p-6 max-w-[1100px]">
+
+      <!-- ===== Dashboard ===== -->
+      <div id="panel-dashboard" class="panel fade-in">
+        <div class="grid grid-cols-4 gap-4 mb-6">
+          <div class="card p-4">
+            <div class="text-xs text-slate-500 mb-1">专线线路</div>
+            <div class="text-2xl font-bold text-white font-mono" id="statServers">0</div>
+          </div>
+          <div class="card p-4">
+            <div class="text-xs text-slate-500 mb-1">转发规则</div>
+            <div class="text-2xl font-bold text-white font-mono" id="statForwards">0</div>
+          </div>
+          <div class="card p-4">
+            <div class="text-xs text-slate-500 mb-1">活跃转发</div>
+            <div class="text-2xl font-bold text-emerald-400 font-mono" id="statActive">0</div>
+          </div>
+          <div class="card p-4">
+            <div class="text-xs text-slate-500 mb-1">远端IP</div>
+            <div class="text-2xl font-bold text-white font-mono" id="statSS">0</div>
+          </div>
+        </div>
+        <div class="card p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-slate-300">NAT 规则</h3>
+            <button onclick="loadIPTables()" class="btn btn-ghost btn-sm">刷新</button>
+          </div>
+          <pre class="text-xs font-mono text-slate-500 whitespace-pre-wrap leading-relaxed bg-black/20 rounded-lg p-4" id="natRules">加载中...</pre>
+        </div>
+      </div>
+
+      <!-- ===== 专线线路 ===== -->
+      <div id="panel-lines" class="panel hidden fade-in">
+        <div class="card p-5 mb-4">
+          <h3 class="text-sm font-semibold text-slate-300 mb-4">添加专线线路</h3>
+          <div class="flex gap-3 mb-2 flex-wrap">
+            <input id="srvName" placeholder="线路名称" class="ipt flex-1 min-w-[140px]">
+            <input id="srvHost" placeholder="IP 地址" class="ipt flex-1 min-w-[140px]">
+            <input id="srvPort" placeholder="SSH端口" value="22" class="ipt w-[80px]">
+            <select id="srvAuthType" class="ipt w-[100px]">
+              <option value="key">SSH Key</option>
+              <option value="password">密码</option>
+            </select>
+          </div>
+          <div class="flex gap-3 flex-wrap">
+            <input id="srvAuth" placeholder="Key 路径或密码" class="ipt flex-1">
+            <select id="srvRole" class="ipt w-[100px]">
+              <option value="landing">落地机</option>
+              <option value="relay">中继机</option>
+            </select>
+            <button onclick="addServer()" class="btn btn-primary">添加</button>
+          </div>
+        </div>
+        <div class="card p-5">
+          <h3 class="text-sm font-semibold text-slate-300 mb-3">线路列表</h3>
+          <table class="tbl">
+            <thead><tr><th>名称</th><th>地址</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody id="serverList"><tr><td colspan="5" class="text-center text-slate-600 py-8">暂无数据</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== 转发规则 ===== -->
+      <div id="panel-forwards" class="panel hidden fade-in">
+        <div class="card p-5 mb-4">
+          <h3 class="text-sm font-semibold text-slate-300 mb-4">添加转发规则</h3>
+          <div class="flex gap-3 flex-wrap">
+            <input id="fwdName" placeholder="规则名称" class="ipt flex-1 min-w-[120px]">
+            <input id="fwdListenPort" placeholder="监听端口" class="ipt w-[100px]">
+            <input id="fwdTargetHost" placeholder="目标 IP" class="ipt flex-1 min-w-[120px]">
+            <input id="fwdTargetPort" placeholder="目标端口" class="ipt w-[100px]">
+            <button onclick="addForward()" class="btn btn-primary">添加</button>
+          </div>
+        </div>
+        <div class="card p-5">
+          <h3 class="text-sm font-semibold text-slate-300 mb-3">规则列表</h3>
+          <table class="tbl">
+            <thead><tr><th>名称</th><th>监听端口</th><th>目标</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody id="forwardList"><tr><td colspan="5" class="text-center text-slate-600 py-8">暂无数据</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== 远端IP ===== -->
+      <div id="panel-remote" class="panel hidden fade-in">
+        <div class="card p-5 mb-4">
+          <h3 class="text-sm font-semibold text-slate-300 mb-4">部署远端 IP <span class="text-xs text-slate-600 font-normal ml-2">method=none (IPLC已加密)</span></h3>
+          <div class="flex gap-3 flex-wrap">
+            <select id="ssServer" class="ipt flex-1 min-w-[160px]"><option value="">选择专线线路...</option></select>
+            <input id="ssPort" placeholder="端口" class="ipt w-[90px]">
+            <input id="ssPass" placeholder="连接密码" class="ipt flex-1 min-w-[120px]">
+            <button onclick="deploySSNode()" class="btn btn-success">部署</button>
+          </div>
+        </div>
+        <div class="card p-5">
+          <h3 class="text-sm font-semibold text-slate-300 mb-3">远端列表</h3>
+          <table class="tbl">
+            <thead><tr><th>线路</th><th>端口</th><th>加密方式</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody id="ssList"><tr><td colspan="5" class="text-center text-slate-600 py-8">暂无数据</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- Toast container -->
+<div id="toastBox"></div>
+
+<script>
+let TOKEN = localStorage.getItem('h7_token') || '';
+
+const TAB_TITLES = { dashboard:'概览', lines:'专线线路', forwards:'转发规则', remote:'远端IP' };
+
+// ==================== API ====================
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Authorization': TOKEN, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch('/api' + path, opts);
+  const data = await res.json();
+  if (res.status === 401) { doLogout(); throw new Error('登录已过期'); }
+  if (!res.ok) throw new Error(data.error || '请求失败');
+  return data;
+}
+
+// ==================== Auth ====================
+async function doLogin() {
+  const pass = document.getElementById('passInput').value;
+  try {
+    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pass }) });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error, true); return; }
+    TOKEN = data.token;
+    localStorage.setItem('h7_token', TOKEN);
+    showApp();
+  } catch (e) { toast('连接失败', true); }
+}
+
+function doLogout() {
+  TOKEN = '';
+  localStorage.removeItem('h7_token');
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('loginWrap').classList.remove('hidden');
+}
+
+async function showApp() {
+  document.getElementById('loginWrap').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  await refreshAll();
+}
+
+// ==================== Navigation ====================
+function switchTab(name) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => { p.classList.toggle('hidden', p.id !== 'panel-' + name); });
+  document.getElementById('pageTitle').textContent = TAB_TITLES[name] || name;
+}
+
+// ==================== Data Loading ====================
+async function refreshAll() {
+  await Promise.all([loadDashboard(), loadServers(), loadForwards(), loadSSNodes()]);
+}
+
+async function loadDashboard() {
+  try {
+    const data = await api('GET', '/status');
+    document.getElementById('verInfo').textContent = 'v' + data.version;
+    document.getElementById('statServers').textContent = data.servers;
+    document.getElementById('statForwards').textContent = data.forwards;
+    document.getElementById('statActive').textContent = data.active_forwards || 0;
+    document.getElementById('statSS').textContent = data.ss_nodes;
+    await loadIPTables();
+  } catch (e) {}
+}
+
+async function loadIPTables() {
+  try {
+    const data = await api('GET', '/iptables');
+    document.getElementById('natRules').textContent = data.rules || '(empty)';
+  } catch (e) { document.getElementById('natRules').textContent = 'Failed to load'; }
+}
+
+// ==================== 专线线路 ====================
+async function loadServers() {
+  try {
+    const data = await api('GET', '/servers');
+    const tbody = document.getElementById('serverList');
+    if (!data.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-slate-600 py-8">暂无线路</td></tr>'; updateSSSelector([]); return; }
+    tbody.innerHTML = data.map(s => `<tr>
+      <td class="font-medium text-slate-300">${esc(s.name)}</td>
+      <td class="font-mono text-xs">${esc(s.host)}:${s.port}</td>
+      <td>${s.role === 'landing' ? '落地机' : '中继机'}</td>
+      <td><span class="badge badge-${s.status}">${s.status}</span></td>
+      <td class="space-x-2">
+        <button class="btn btn-ghost btn-sm" onclick="testServer(${s.id})">测试</button>
+        <button class="btn btn-danger btn-sm" onclick="delServer(${s.id})">删除</button>
+      </td>
+    </tr>`).join('');
+    updateSSSelector(data.filter(s => s.role === 'landing'));
+  } catch (e) {}
+}
+
+function updateSSSelector(servers) {
+  const sel = document.getElementById('ssServer');
+  sel.innerHTML = '<option value="">选择专线线路...</option>' + servers.map(s => `<option value="${s.id}">${esc(s.name)} (${esc(s.host)})</option>`).join('');
+}
+
+async function addServer() {
+  try {
+    await api('POST', '/servers', {
+      name: val('srvName'), host: val('srvHost'),
+      port: parseInt(val('srvPort')) || 22, user: 'root',
+      auth_type: val('srvAuthType'), auth_value: val('srvAuth'),
+      role: val('srvRole'),
+    });
+    toast('线路添加成功');
+    clearInputs('srvName', 'srvHost', 'srvAuth');
+    await loadServers(); await loadDashboard();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function testServer(id) {
+  toast('测试连接中...');
+  try {
+    const data = await api('POST', '/servers/' + id + '/test');
+    toast(data.status === 'online' ? 'SSH 连接正常' : '连接失败: ' + (data.error || ''), data.status !== 'online');
+    await loadServers();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function delServer(id) {
+  if (!confirm('确认删除此线路？')) return;
+  try { await api('DELETE', '/servers/' + id); toast('已删除'); await loadServers(); await loadDashboard(); } catch (e) { toast(e.message, true); }
+}
+
+// ==================== 转发规则 ====================
+async function loadForwards() {
+  try {
+    const data = await api('GET', '/forwards');
+    const tbody = document.getElementById('forwardList');
+    if (!data.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-slate-600 py-8">暂无规则</td></tr>'; return; }
+    tbody.innerHTML = data.map(f => `<tr>
+      <td class="font-medium text-slate-300">${esc(f.name)}</td>
+      <td class="font-mono text-xs">${f.listen_port}</td>
+      <td class="font-mono text-xs">${esc(f.target_host)}:${f.target_port}</td>
+      <td><span class="badge badge-${f.status}">${f.status}</span></td>
+      <td class="space-x-2">
+        <button class="btn ${f.status==='active'?'btn-warn':'btn-success'} btn-sm" onclick="toggleForward(${f.id})">${f.status==='active'?'停用':'激活'}</button>
+        <button class="btn btn-danger btn-sm" onclick="delForward(${f.id})">删除</button>
+      </td>
+    </tr>`).join('');
+  } catch (e) {}
+}
+
+async function addForward() {
+  try {
+    await api('POST', '/forwards', {
+      name: val('fwdName'), listen_port: parseInt(val('fwdListenPort')),
+      target_host: val('fwdTargetHost'), target_port: parseInt(val('fwdTargetPort')),
+      server_id: 0, protocol: 'tcp',
+    });
+    toast('规则添加成功');
+    clearInputs('fwdName', 'fwdListenPort', 'fwdTargetHost', 'fwdTargetPort');
+    await loadForwards(); await loadDashboard();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function toggleForward(id) {
+  try {
+    const data = await api('POST', '/forwards/' + id + '/toggle');
+    toast(data.message);
+    await loadForwards(); await loadDashboard();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function delForward(id) {
+  if (!confirm('确认删除此规则？')) return;
+  try { await api('DELETE', '/forwards/' + id); toast('已删除'); await loadForwards(); await loadDashboard(); } catch (e) { toast(e.message, true); }
+}
+
+// ==================== 远端IP ====================
+async function loadSSNodes() {
+  try {
+    const data = await api('GET', '/ss');
+    const tbody = document.getElementById('ssList');
+    if (!data.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-slate-600 py-8">暂无部署</td></tr>'; return; }
+    tbody.innerHTML = data.map(n => `<tr>
+      <td class="font-medium text-slate-300">${esc(n.server_name)}</td>
+      <td class="font-mono text-xs">${n.port}</td>
+      <td class="font-mono text-xs">${n.method}</td>
+      <td><span class="badge badge-${n.status}">${n.status}</span></td>
+      <td><button class="btn btn-danger btn-sm" onclick="delSSNode(${n.id})">删除</button></td>
+    </tr>`).join('');
+  } catch (e) {}
+}
+
+async function deploySSNode() {
+  const serverId = val('ssServer');
+  if (!serverId) { toast('请选择专线线路', true); return; }
+  try {
+    await api('POST', '/ss/deploy', {
+      server_id: parseInt(serverId),
+      port: parseInt(val('ssPort')),
+      password: val('ssPass'),
+    });
+    toast('部署中，请稍后刷新查看状态');
+    clearInputs('ssPort', 'ssPass');
+    await loadSSNodes();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function delSSNode(id) {
+  if (!confirm('确认删除此远端节点？')) return;
+  try { await api('DELETE', '/ss/' + id); toast('已删除'); await loadSSNodes(); await loadDashboard(); } catch (e) { toast(e.message, true); }
+}
+
+// ==================== Helpers ====================
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function val(id) { return document.getElementById(id).value; }
+function clearInputs(...ids) { ids.forEach(id => document.getElementById(id).value = ''); }
+
+function toast(msg, isErr) {
+  const box = document.getElementById('toastBox');
+  const el = document.createElement('div');
+  el.className = 'toast ' + (isErr ? 'toast-err' : 'toast-ok');
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); }, 3000);
+}
+
+// ==================== Init ====================
+if (TOKEN) { api('GET', '/status').then(() => showApp()).catch(() => doLogout()); }
+</script>
+</body>
+</html>
